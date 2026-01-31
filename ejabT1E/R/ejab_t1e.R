@@ -61,8 +61,8 @@ compute_xi <- function(p_sub, ejab_sub, p_unique, C) {
 #' objective_C(1.0, p, e, up = 0.05)
 #' @export
 objective_C <- function(C, p, ejab, up) {
-  # Filter to p <= up
-  idx <- p <= up
+  # Filter to p < up (strict; exclude p == up to avoid boundary clumping)
+  idx <- p < up
   p_sub <- p[idx]
   ejab_sub <- ejab[idx]
   N <- length(p_sub)
@@ -99,13 +99,17 @@ objective_C <- function(C, p, ejab, up) {
 #' Grid search for C*
 #'
 #' Finds the value of C on a grid that minimizes the objective function.
-#' The default grid is \code{seq(0, 10, length.out = 200)}.
+#' The default grid covers \code{[1/3, 3]} with 200 points. Pass
+#' \code{grid_range = c(1, 1)} to fix C* = 1 (no search).
 #'
 #' @param p Numeric vector of p-values
 #' @param ejab Numeric vector of eJAB01 values
 #' @param up Upper bound (default 0.05)
-#' @param grid Numeric vector of candidate C values
-#'   (default: \code{seq(0, 10, length.out = 200)})
+#' @param grid_range Length-2 numeric vector \code{c(lower, upper)} specifying
+#'   the grid bounds (default \code{c(1/3, 3)}). If both values are equal,
+#'   C* is fixed at that value with no search.
+#' @param grid_n Number of grid points (default 200). Ignored when
+#'   \code{grid_range} specifies a single point.
 #' @return A list with components:
 #'   \describe{
 #'     \item{Cstar}{The C value minimizing the objective.}
@@ -119,9 +123,16 @@ objective_C <- function(C, p, ejab, up) {
 #' e <- ejab01(p, rep(50, 200), rep(1, 200))
 #' fit <- estimate_Cstar(p, e, up = 0.05)
 #' fit$Cstar
+#' # Fix C* = 1:
+#' fit1 <- estimate_Cstar(p, e, up = 0.05, grid_range = c(1, 1))
 #' @export
 estimate_Cstar <- function(p, ejab, up = 0.05,
-                            grid = seq(0, 10, length.out = 200)) {
+                            grid_range = c(1/3, 3), grid_n = 200) {
+  if (grid_range[1] == grid_range[2]) {
+    grid <- grid_range[1]
+  } else {
+    grid <- seq(grid_range[1], grid_range[2], length.out = grid_n)
+  }
   vals <- vapply(grid, objective_C, numeric(1), p = p, ejab = ejab, up = up)
 
   idx <- which.min(vals)
@@ -146,7 +157,7 @@ estimate_Cstar <- function(p, ejab, up = 0.05,
 #' @return Integer vector of indices of candidate T1Es
 #' @export
 detect_type1 <- function(p, ejab, alpha, Cstar) {
-  which(p <= alpha & ejab > Cstar)
+  which(p < alpha & ejab > Cstar)
 }
 
 
@@ -241,7 +252,7 @@ posterior_t1e <- function(p, ejab, alpha, all_objectives, grid) {
   # For each result, sum posterior(c_k) over all c_k where
   # p_i <= alpha AND eJAB_i > c_k
   vapply(seq_along(p), function(i) {
-    if (p[i] > alpha) return(0)
+    if (p[i] >= alpha) return(0)
     qualifying <- ejab[i] > grid
     sum(posterior_C[qualifying])
   }, numeric(1))
@@ -373,7 +384,9 @@ diagnostic_qqplot_bf <- function(U, BF = NULL, log_BF = TRUE,
 #'   p <= up are used for estimating C*.
 #' @param alpha Significance level for T1E detection (default 0.05).
 #'   Must satisfy alpha <= up.
-#' @param grid Grid for C* search (default \code{seq(0, 10, length.out = 200)})
+#' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
+#'   C* grid (default \code{c(1/3, 3)}). Use \code{c(1, 1)} to fix C* = 1.
+#' @param grid_n Number of grid points (default 200)
 #' @param plot Logical; produce diagnostic QQ-plot? (default TRUE)
 #' @return A list with components:
 #'   \describe{
@@ -400,7 +413,7 @@ diagnostic_qqplot_bf <- function(U, BF = NULL, log_BF = TRUE,
 #' head(result$candidates)
 #' @export
 ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
-                          grid = seq(0, 10, length.out = 200),
+                          grid_range = c(1/3, 3), grid_n = 200,
                           plot = TRUE) {
   # Input validation
   if (!all(c("p", "n", "q") %in% names(df))) {
@@ -417,7 +430,7 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
   ejab_vals <- ejab01(df$p, df$n, df$q)
 
   # Estimate C*
-  Cfit <- estimate_Cstar(df$p, ejab_vals, up, grid)
+  Cfit <- estimate_Cstar(df$p, ejab_vals, up, grid_range, grid_n)
 
   # Detect candidate T1Es
   idx <- detect_type1(df$p, ejab_vals, alpha, Cfit$Cstar)
@@ -462,7 +475,7 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
       NULL
     },
     U = U,
-    posterior_C = data.frame(C = grid, posterior = posterior_C),
+    posterior_C = data.frame(C = Cfit$grid, posterior = posterior_C),
     ejab = ejab_vals
   )
 }
