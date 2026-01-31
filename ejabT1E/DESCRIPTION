@@ -1,0 +1,18 @@
+Package: ejabT1E
+Title: Detecting Type I Errors Through Bayes/NHST Conflict Using eJAB
+Version: 0.1.0
+Authors@R: c(
+    person("Evan", "Strasdin", email = "evn.strsdn@pm.me", role = c("aut", "cre")),
+    person("Farouk", "Nathoo", role = "aut"),
+    person("Puneet", "Velidi", role = "aut"),
+    person("Zhengxiao", "Wei", role = "aut")
+  )
+Description: Identifies candidate Type I errors in collections of NHST results
+    by detecting Bayes/NHST contradictions using the eJAB01 approximate objective
+    Bayes factor. Estimates a tuning parameter C* via minimization of an integrated
+    squared deviation objective, produces diagnostic QQ-plots, and computes
+    posterior probabilities of Type I error for each result.
+License: GPL-3
+Encoding: UTF-8
+Imports: stats, graphics, grDevices
+RoxygenNote: 7.3.1
