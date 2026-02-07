@@ -191,197 +191,148 @@ diagnostic_U <- function(p, n, q, alpha, Cstar) {
 }
 
 
-#' Produce diagnostic QQ-plot
+#' Produce diagnostic QQ-plot with simultaneous confidence band
 #'
 #' Produces a QQ-plot of the diagnostic U_i values against
 #' Unif(0,1) theoretical quantiles. Linearity indicates that
-#' the left-tail uniformity assumption holds.
+#' the left-tail uniformity assumption holds. Optionally adds
+#' a simultaneous 95% confidence band based on Beta order statistics.
 #'
 #' @param U Numeric vector of diagnostic U_i values
+#' @param band Logical; add simultaneous confidence band? (default TRUE)
+#' @param conf Confidence level for band (default 0.95)
+#' @param B Number of Monte Carlo simulations for band calibration (default 10000)
+#' @param seed Random seed for reproducibility (default 1)
 #' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
-#' @return Invisibly, a list with components \code{theoretical} and \code{observed}.
+#' @return Invisibly, a list with components:
+#'   \describe{
+#'     \item{theoretical}{Theoretical quantiles}
+#'     \item{observed}{Observed (sorted) U values}
+#'     \item{lower}{Lower band (if band=TRUE)}
+#'     \item{upper}{Upper band (if band=TRUE)}
+#'     \item{outside}{Indices of observations outside band (if band=TRUE)}
+#'   }
 #' @export
-diagnostic_qqplot <- function(U, ...) {
-  T_len <- length(U)
-  if (T_len == 0) {
+diagnostic_qqplot <- function(U, band = TRUE, conf = 0.95, B = 10000, seed = 1, ...) {
+  n <- length(U)
+  if (n == 0) {
     message("No candidate T1Es detected; cannot produce QQ-plot.")
     return(invisible(NULL))
   }
-  theoretical <- stats::qunif(stats::ppoints(T_len))
+
+  theoretical <- stats::ppoints(n)
   observed <- sort(U)
 
+  # Compute simultaneous band if requested
+  lower <- upper <- outside <- NULL
+  if (band && n >= 2) {
+    # Monte Carlo calibration to find pointwise level giving simultaneous coverage
+    set.seed(seed)
+    U_sim <- matrix(stats::runif(n * B), nrow = n, ncol = B)
+    U_sim <- apply(U_sim, 2, sort)
+    i <- seq_len(n)
+
+    # Function to estimate simultaneous coverage for a given pointwise level p
+    coverage_hat <- function(p) {
+      tail <- (1 - p) / 2
+      L <- stats::qbeta(tail, i, n + 1 - i)
+      U <- stats::qbeta(1 - tail, i, n + 1 - i)
+      inside <- colSums(U_sim >= L & U_sim <= U) == n
+      mean(inside)
+    }
+
+    # Find p* such that simultaneous coverage = conf
+    f <- function(p) coverage_hat(p) - conf
+    if (f(conf) >= 0) {
+      p_star <- conf
+    } else {
+      p_star <- stats::uniroot(f, lower = conf, upper = 0.9999, tol = 1e-4)$root
+    }
+
+    # Construct band
+    tail_star <- (1 - p_star) / 2
+    lower <- stats::qbeta(tail_star, i, n + 1 - i)
+    upper <- stats::qbeta(1 - tail_star, i, n + 1 - i)
+
+    # Find points outside band
+    outside_ord <- which(observed < lower | observed > upper)
+    outside <- order(U)[outside_ord]
+  }
+
+  # Plot
   graphics::plot(theoretical, observed,
        xlab = "Theoretical Unif(0,1) Quantiles",
        ylab = "Observed U_i Quantiles",
        main = "Diagnostic QQ-Plot",
        pch = 16, cex = 0.6, ...)
   graphics::abline(0, 1, col = "red", lwd = 2)
-  invisible(list(theoretical = theoretical, observed = observed))
-}
 
-
-#' Compute posterior probability of Type I error for each result
-#'
-#' Treats C* as the posterior mode under a uniform prior on the grid.
-#' Converts objective function values to a posterior distribution over C,
-#' then for each result computes P(T1E) by summing posterior mass over
-#' all C values satisfying the contradiction criterion.
-#'
-#' @details
-#' The posterior over C is obtained by:
-#' \deqn{\pi(C_k | \text{data}) \propto \exp\{-\text{objective}(C_k)\}}
-#' assuming a uniform prior over the grid. For each result i, the
-#' posterior probability of being a Type I error is:
-#' \deqn{P(\text{T1E}_i) = \sum_{k: p_i \le \alpha,\; \text{eJAB}_i > C_k} \pi(C_k | \text{data})}
-#'
-#' @param p Numeric vector of p-values (for results of interest)
-#' @param ejab Numeric vector of eJAB01 values
-#' @param alpha Significance level
-#' @param all_objectives Numeric vector of objective function values over the grid
-#' @param grid Numeric vector of C values corresponding to all_objectives
-#' @return Numeric vector of posterior T1E probabilities, one per result
-#' @export
-posterior_t1e <- function(p, ejab, alpha, all_objectives, grid) {
-  # Convert objectives to unnormalized posterior: exp(-obj)
-  # Subtract max of log-values for numerical stability
-  log_unnorm <- -all_objectives
-  log_unnorm <- log_unnorm - max(log_unnorm)
-  unnorm <- exp(log_unnorm)
-  posterior_C <- unnorm / sum(unnorm)
-
-  # For each result, sum posterior(c_k) over all c_k where
-  # p_i <= alpha AND eJAB_i > c_k
-  vapply(seq_along(p), function(i) {
-    if (p[i] >= alpha) return(0)
-    qualifying <- ejab[i] > grid
-    sum(posterior_C[qualifying])
-  }, numeric(1))
-}
-
-
-#' Compute Bayes factor for Type I error
-#'
-#' For each candidate T1E, computes a Bayes factor measuring the evidence
-#' that the result is a Type I error, relative to the prior.
-#'
-#' @details
-#' The posterior odds are:
-#' \deqn{O_D = \frac{P(\text{T1E} \mid \text{Data})}{1 - P(\text{T1E} \mid \text{Data})}}
-#' The prior odds (using alpha as the prior probability of a T1E) are:
-#' \deqn{O_P = \frac{\alpha}{1 - \alpha}}
-#' The Bayes factor is \eqn{BF = O_D / O_P}.
-#'
-#' @param posterior_prob Numeric vector of posterior T1E probabilities
-#'   (from \code{\link{posterior_t1e}})
-#' @param alpha Significance level (prior probability of T1E)
-#' @return Numeric vector of Bayes factors. Values > 1 indicate data increased
-#'   the evidence for T1E relative to the prior. Inf if posterior_prob = 1.
-#' @export
-bayes_factor_t1e <- function(posterior_prob, alpha) {
-  if (any(posterior_prob < 0 | posterior_prob > 1)) {
-    stop("posterior_prob must be in [0, 1].")
-  }
-  if (alpha <= 0 || alpha >= 1) stop("alpha must be in (0, 1).")
-  prior_odds <- alpha / (1 - alpha)
-  posterior_odds <- posterior_prob / (1 - posterior_prob)
-  posterior_odds / prior_odds
-}
-
-
-#' Produce diagnostic QQ-plot coloured by Bayes factor
-#'
-#' Produces a QQ-plot of the diagnostic U_i values against
-#' Unif(0,1) theoretical quantiles, with points coloured by
-#' their Bayes factor for Type I error. Includes a colour bar.
-#'
-#' @param U Numeric vector of diagnostic U_i values
-#' @param BF Numeric vector of Bayes factors (same length as U).
-#'   If NULL, all points are plotted in black (no colour mapping).
-#' @param log_BF Logical; if TRUE (default), colour scale uses log10(BF)
-#' @param col_low Colour for lowest BF values (default "blue")
-#' @param col_high Colour for highest BF values (default "red")
-#' @param n_cols Number of colours in the gradient (default 256)
-#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
-#' @return Invisibly, a list with components \code{theoretical}, \code{observed},
-#'   and \code{BF}.
-#' @export
-diagnostic_qqplot_bf <- function(U, BF = NULL, log_BF = TRUE,
-                                 col_low = "blue", col_high = "red",
-                                 n_cols = 256, ...) {
-  T_len <- length(U)
-  if (T_len == 0) {
-    message("No candidate T1Es detected; cannot produce QQ-plot.")
-    return(invisible(NULL))
-  }
-  theoretical <- stats::qunif(stats::ppoints(T_len))
-  ord <- order(U)
-  observed <- U[ord]
-
-  if (!is.null(BF)) {
-    BF_sorted <- BF[ord]
-    if (log_BF) {
-      val <- log10(pmax(BF_sorted, .Machine$double.eps))
-    } else {
-      val <- BF_sorted
+  if (band && n >= 2) {
+    graphics::lines(theoretical, lower, col = "grey50", lty = 2)
+    graphics::lines(theoretical, upper, col = "grey50", lty = 2)
+    # Highlight outside points
+    if (length(outside_ord) > 0) {
+      graphics::points(theoretical[outside_ord], observed[outside_ord],
+                       pch = 16, cex = 0.6, col = "red")
     }
-    rng <- range(val, finite = TRUE)
-    if (rng[1] == rng[2]) rng <- rng + c(-0.5, 0.5)
-    scaled <- (val - rng[1]) / (rng[2] - rng[1])
-    scaled[scaled < 0] <- 0
-    scaled[scaled > 1] <- 1
-
-    pal <- grDevices::colorRampPalette(c(col_low, col_high))(n_cols)
-    cols <- pal[pmax(1, ceiling(scaled * n_cols))]
-  } else {
-    cols <- "black"
-    BF_sorted <- NULL
   }
 
-  # Save and restore par
-  old_par <- graphics::par(no.readonly = TRUE)
-  on.exit(graphics::par(old_par))
+  invisible(list(
+    theoretical = theoretical,
+    observed = observed,
+    lower = lower,
+    upper = upper,
+    outside = outside
+  ))
+}
 
-  if (!is.null(BF)) {
-    graphics::layout(matrix(c(1, 2), nrow = 1), widths = c(5, 1))
-    graphics::par(mar = c(5, 4, 4, 1))
-  }
 
-  graphics::plot(theoretical, observed,
-       xlab = "Theoretical Unif(0,1) Quantiles",
-       ylab = "Observed U_i Quantiles",
-       main = "Diagnostic QQ-Plot",
-       col = cols, pch = 16, cex = 0.6, ...)
-  graphics::abline(0, 1, col = "grey40", lwd = 2)
+#' Calibration plot (Figure 3a style)
+#'
+#' Plots observed proportion of contradictions (p <= alpha AND eJAB01 > Cstar)
+#' against alpha. If the method is well-calibrated, the curve should follow
+#' the 45-degree line.
+#'
+#' @param p Numeric vector of p-values
+#' @param ejab Numeric vector of eJAB01 values
+#' @param Cstar Threshold value (e.g., estimated C* or fixed C=1)
+#' @param up Upper bound for alpha grid (default 0.05)
+#' @param n_grid Number of alpha grid points (default 100)
+#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
+#' @return Invisibly, a list with components \code{alpha} and \code{proportion},
+#'   or NULL if not yet implemented for the given data.
+#' @note This function requires p-values spanning the full range (0, 1) to
+#'   produce meaningful results. Currently a placeholder pending full CTG data.
+#' @export
+calibration_plot <- function(p, ejab, Cstar, up = 0.05, n_grid = 100, ...) {
+  alpha_grid <- seq(0, up, length.out = n_grid)
+  N <- length(p)
 
-  # Colour bar
-  if (!is.null(BF)) {
-    graphics::par(mar = c(5, 0.5, 4, 3))
-    bar_vals <- seq(0, 1, length.out = n_cols)
-    pal <- grDevices::colorRampPalette(c(col_low, col_high))(n_cols)
-    graphics::image(1, bar_vals, matrix(bar_vals, nrow = 1), col = pal,
-          axes = FALSE, xlab = "", ylab = "")
-    labels_at <- seq(0, 1, length.out = 5)
-    labels_val <- round(rng[1] + labels_at * (rng[2] - rng[1]), 2)
-    graphics::axis(4, at = labels_at, labels = labels_val, las = 1, cex.axis = 0.8)
-    graphics::mtext(if (log_BF) expression(log[10](BF)) else "BF",
-          side = 4, line = 2, cex = 0.8)
-  }
+  prop <- vapply(alpha_grid, function(a) {
+    sum(p <= a & ejab > Cstar) / N
+  }, numeric(1))
 
-  invisible(list(theoretical = theoretical, observed = observed, BF = BF_sorted))
+  graphics::plot(alpha_grid, prop,
+       type = "l", lwd = 2,
+       xlab = expression(alpha),
+       ylab = expression(P(p <= alpha ~ "and" ~ eJAB["01"] > C*"*")),
+       xlim = c(0, up), ylim = c(0, max(prop, up / 1)), ...)
+  graphics::abline(0, 1 / up, col = "red", lwd = 2)
+
+  invisible(list(alpha = alpha_grid, proportion = prop))
 }
 
 
 #' Full eJAB Type I Error Detection Pipeline
 #'
 #' Runs the complete analysis: computes eJAB01 values, estimates C*,
-#' detects candidate Type I errors, produces diagnostics, and computes
-#' posterior probabilities.
+#' detects candidate Type I errors, and produces diagnostics.
 #'
 #' @param df Data frame with columns: \code{p} (p-values), \code{n}
 #'   (sample sizes, > 1), \code{q} (test dimensions). An optional \code{ID}
 #'   column is preserved in output.
 #' @param up Upper p-value bound (default 0.05). Only results with
-#'   p <= up are used for estimating C*.
+#'   p < up are used for estimating C*.
 #' @param alpha Significance level for T1E detection (default 0.05).
 #'   Must satisfy alpha <= up.
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
@@ -393,11 +344,8 @@ diagnostic_qqplot_bf <- function(U, BF = NULL, log_BF = TRUE,
 #'     \item{Cstar}{Estimated threshold C*.}
 #'     \item{objective}{Minimized objective function value.}
 #'     \item{candidates}{Data frame of candidate T1Es with columns from input
-#'       plus \code{ejab}, \code{posterior_prob}, and \code{bayes_factor}.
-#'       NULL if none detected.}
+#'       plus \code{ejab}. NULL if none detected.}
 #'     \item{U}{Numeric vector of diagnostic U_i values for candidates.}
-#'     \item{posterior_C}{Data frame with columns \code{C} and \code{posterior}
-#'       giving the posterior distribution over the grid.}
 #'     \item{ejab}{Numeric vector of eJAB01 values for all input results.}
 #'   }
 #' @examples
@@ -437,45 +385,22 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
 
   # Compute diagnostics for candidates
   U <- NULL
-  post_prob <- NULL
-  bf <- NULL
-
   if (length(idx) > 0) {
     U <- diagnostic_U(df$p[idx], df$n[idx], df$q[idx], alpha, Cfit$Cstar)
-
-    # Posterior probabilities
-    post_prob <- posterior_t1e(
-      df$p[idx], ejab_vals[idx], alpha,
-      Cfit$all_objectives, Cfit$grid
-    )
-
-    # Bayes factors
-    bf <- bayes_factor_t1e(post_prob, alpha)
-
     if (plot) {
-      diagnostic_qqplot_bf(U, BF = bf)
+      diagnostic_qqplot(U)
     }
   }
-
-  # Posterior distribution over C
-  log_unnorm <- -Cfit$all_objectives
-  log_unnorm <- log_unnorm - max(log_unnorm)
-  unnorm <- exp(log_unnorm)
-  posterior_C <- unnorm / sum(unnorm)
 
   list(
     Cstar = Cfit$Cstar,
     objective = Cfit$objective,
     candidates = if (length(idx) > 0) {
-      cbind(df[idx, , drop = FALSE],
-            ejab = ejab_vals[idx],
-            posterior_prob = post_prob,
-            bayes_factor = bf)
+      cbind(df[idx, , drop = FALSE], ejab = ejab_vals[idx])
     } else {
       NULL
     },
     U = U,
-    posterior_C = data.frame(C = Cfit$grid, posterior = posterior_C),
     ejab = ejab_vals
   )
 }
