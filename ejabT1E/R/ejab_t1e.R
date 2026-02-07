@@ -289,37 +289,77 @@ diagnostic_qqplot <- function(U, band = TRUE, conf = 0.95, B = 10000, seed = 1, 
 
 #' Calibration plot (Figure 3a style)
 #'
-#' Plots observed proportion of contradictions (p <= alpha AND eJAB01 > Cstar)
-#' against alpha. If the method is well-calibrated, the curve should follow
-#' the 45-degree line.
+#' Multi-panel calibration plot showing observed proportion of contradictions
+#' (p <= alpha AND eJAB01 > C) against alpha for a grid of C values. If the
+#' method is well-calibrated, the curve should follow the reference line
+#' with slope 1/up. Use \code{grid_range = c(C, C)} for a single-panel plot
+#' at a specific C value.
 #'
-#' @param p Numeric vector of p-values
-#' @param ejab Numeric vector of eJAB01 values
-#' @param Cstar Threshold value (e.g., estimated C* or fixed C=1)
-#' @param up Upper bound for alpha grid (default 0.05)
-#' @param n_grid Number of alpha grid points (default 100)
+#' @param p Numeric vector of p-values (should span the full range used in
+#'   estimation, not just significant results)
+#' @param ejab Numeric vector of eJAB01 values (same length as \code{p})
+#' @param up Upper bound for the alpha grid (default 0.1)
+#' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
+#'   C grid (default \code{c(0, 1)}). Use \code{c(C, C)} for a single panel.
+#' @param grid_n Number of C grid points (default 18). Panels are arranged
+#'   in a 3x3 grid; more than 9 panels will span multiple pages.
+#' @param n_alpha Number of alpha grid points per panel (default 200)
 #' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
-#' @return Invisibly, a list with components \code{alpha} and \code{proportion},
-#'   or NULL if not yet implemented for the given data.
-#' @note This function requires p-values spanning the full range (0, 1) to
-#'   produce meaningful results. Currently a placeholder pending full CTG data.
+#' @return Invisibly, a list with components \code{C_grid} (numeric vector of
+#'   C values), \code{alpha_grid} (numeric vector of alpha values), and
+#'   \code{proportions} (matrix with one row per C value and one column per
+#'   alpha value).
 #' @export
-calibration_plot <- function(p, ejab, Cstar, up = 0.05, n_grid = 100, ...) {
-  alpha_grid <- seq(0, up, length.out = n_grid)
-  N <- length(p)
+calibration_plot <- function(p, ejab, up = 0.1,
+                              grid_range = c(0, 1), grid_n = 18,
+                              n_alpha = 200, ...) {
+  # Build C grid (same pattern as estimate_Cstar)
+  if (grid_range[1] == grid_range[2]) {
+    C_grid <- grid_range[1]
+  } else {
+    C_grid <- seq(grid_range[1], grid_range[2], length.out = grid_n)
+  }
 
-  prop <- vapply(alpha_grid, function(a) {
-    sum(p <= a & ejab > Cstar) / N
-  }, numeric(1))
+  alpha_grid <- seq(0, up, length.out = n_alpha)
+  N <- sum(p < up)
 
-  graphics::plot(alpha_grid, prop,
-       type = "l", lwd = 2,
-       xlab = expression(alpha),
-       ylab = expression(P(p <= alpha ~ "and" ~ eJAB["01"] > C*"*")),
-       xlim = c(0, up), ylim = c(0, max(prop, up / 1)), ...)
-  graphics::abline(0, 1 / up, col = "red", lwd = 2)
+  # Compute proportions: one row per C, one column per alpha
+  proportions <- vapply(C_grid, function(C) {
+    vapply(alpha_grid, function(a) {
+      sum(p <= a & ejab > C) / N
+    }, numeric(1))
+  }, numeric(n_alpha))
+  # vapply returns n_alpha x length(C_grid); transpose so rows = C values
+  proportions <- if (length(C_grid) == 1) {
+    matrix(proportions, nrow = 1)
+  } else {
+    t(proportions)
+  }
 
-  invisible(list(alpha = alpha_grid, proportion = prop))
+  # Determine panel layout (max 9 per page, auto-paginates in PDF)
+  n_panels <- length(C_grid)
+  per_page <- min(n_panels, 9)
+  n_col <- ceiling(sqrt(per_page))
+  n_row <- ceiling(per_page / n_col)
+
+  old_par <- graphics::par(mfrow = c(n_row, n_col), mar = c(4, 4, 2, 1))
+  on.exit(graphics::par(old_par))
+
+  for (i in seq_along(C_grid)) {
+    prop <- proportions[i, ]
+    graphics::plot(alpha_grid, prop,
+         type = "l", lwd = 2,
+         xlab = expression(alpha),
+         ylab = "Observed Prop.",
+         xlim = c(0, up),
+         ylim = c(0, max(prop, up)),
+         main = bquote(C == .(round(C_grid[i], 3))),
+         ...)
+    graphics::abline(0, 1 / up, col = "red", lty = 2, lwd = 2)
+  }
+
+  invisible(list(C_grid = C_grid, alpha_grid = alpha_grid,
+                 proportions = proportions))
 }
 
 
@@ -338,7 +378,8 @@ calibration_plot <- function(p, ejab, Cstar, up = 0.05, n_grid = 100, ...) {
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
 #'   C* grid (default \code{c(1/3, 3)}). Use \code{c(1, 1)} to fix C* = 1.
 #' @param grid_n Number of grid points (default 200)
-#' @param plot Logical; produce diagnostic QQ-plot? (default TRUE)
+#' @param plot Logical; produce calibration plot and diagnostic QQ-plot?
+#'   (default TRUE)
 #' @return A list with components:
 #'   \describe{
 #'     \item{Cstar}{Estimated threshold C*.}
@@ -382,6 +423,11 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
 
   # Detect candidate T1Es
   idx <- detect_type1(df$p, ejab_vals, alpha, Cfit$Cstar)
+
+  # Calibration plot
+  if (plot) {
+    calibration_plot(df$p, ejab_vals, up = up)
+  }
 
   # Compute diagnostics for candidates
   U <- NULL

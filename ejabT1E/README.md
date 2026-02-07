@@ -44,9 +44,9 @@ result$ejab        # eJAB01 values for all results
 | `estimate_Cstar(p, ejab, up, grid_range, grid_n)` | Grid search for optimal C* |
 | `detect_type1(p, ejab, alpha, Cstar)` | Identify candidate T1E indices |
 | `diagnostic_U(p, n, q, alpha, Cstar)` | Compute diagnostic U values |
-| `diagnostic_qqplot(U, band, conf)` | QQ-plot with 95% simultaneous confidence band |
-| `calibration_plot(p, ejab, Cstar, up)` | Calibration plot (proportion vs alpha) |
-| `ejab_pipeline(df, up, alpha, ...)` | Full analysis pipeline |
+| `diagnostic_qqplot(U, band, conf, B, seed)` | QQ-plot with simultaneous confidence band |
+| `calibration_plot(p, ejab, up, grid_range, grid_n, n_alpha)` | Multi-panel calibration plot (proportion vs alpha for C grid) |
+| `ejab_pipeline(df, up, alpha, grid_range, grid_n, plot)` | Full analysis pipeline |
 
 ## Method
 
@@ -82,6 +82,21 @@ diagnostic_qqplot(U, band = FALSE)
 ```
 
 Points outside the band are highlighted in red and returned in `$outside`.
+
+### Calibration Plot
+
+Multi-panel plot showing observed contradiction rate vs alpha for a grid of C values. The reference line (slope 1/up) shows the expected rate under the null.
+
+```r
+# Default: 18 panels (2 pages of 9) from C = 0 to C = 1
+calibration_plot(p, ejab, up = 0.1)
+
+# Custom range
+calibration_plot(p, ejab, up = 0.1, grid_range = c(0, 3))
+
+# Single panel at C = 1
+calibration_plot(p, ejab, up = 0.1, grid_range = c(1, 1))
+```
 
 ## Input Requirements
 

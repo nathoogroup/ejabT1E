@@ -10,7 +10,8 @@ Authors@R: c(
 Description: Identifies candidate Type I errors in collections of NHST results
     by detecting Bayes/NHST contradictions using the eJAB01 approximate objective
     Bayes factor. Estimates a tuning parameter C* via minimization of an integrated
-    squared deviation objective and produces diagnostic QQ-plots.
+    squared deviation objective and produces calibration plots and diagnostic
+    QQ-plots.
 License: GPL-3
 Encoding: UTF-8
 Imports: stats, graphics

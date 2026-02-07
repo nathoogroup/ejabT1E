@@ -3,23 +3,25 @@
 \title{Full eJAB Type I Error Detection Pipeline}
 \description{
 Runs the complete analysis: computes eJAB01 values, estimates C*,
-detects candidate Type I errors, produces diagnostics, and computes
-posterior probabilities.
+detects candidate Type I errors, and produces diagnostics.
 }
 \usage{
 ejab_pipeline(df, up = 0.05, alpha = 0.05,
-              grid = seq(1/3, 3, length.out = 200), plot = TRUE)
+              grid_range = c(1/3, 3), grid_n = 200, plot = TRUE)
 }
 \arguments{
 \item{df}{Data frame with columns: \code{p} (p-values), \code{n}
   (sample sizes, > 1), \code{q} (test dimensions). An optional \code{ID}
   column is preserved in output.}
 \item{up}{Upper p-value bound (default 0.05). Only results with
-  p <= up are used for estimating C*.}
+  p < up are used for estimating C*.}
 \item{alpha}{Significance level for T1E detection (default 0.05).
   Must satisfy alpha <= up.}
-\item{grid}{Grid for C* search (default \code{seq(1/3, 3, length.out = 200)}).}
-\item{plot}{Logical; produce diagnostic QQ-plot? (default TRUE).}
+\item{grid_range}{Length-2 numeric vector \code{c(lower, upper)} for the
+  C* grid (default \code{c(1/3, 3)}). Use \code{c(1, 1)} to fix C* = 1.}
+\item{grid_n}{Number of grid points (default 200).}
+\item{plot}{Logical; produce calibration plot and diagnostic QQ-plot?
+  (default TRUE).}
 }
 \value{
 A list with components:
@@ -27,10 +29,8 @@ A list with components:
   \item{Cstar}{Estimated threshold C*.}
   \item{objective}{Minimized objective function value.}
   \item{candidates}{Data frame of candidate T1Es with columns from input
-    plus \code{ejab} and \code{posterior_prob}. NULL if none detected.}
+    plus \code{ejab}. NULL if none detected.}
   \item{U}{Numeric vector of diagnostic U_i values for candidates.}
-  \item{posterior_C}{Data frame with columns \code{C} and \code{posterior}
-    giving the posterior distribution over the grid.}
   \item{ejab}{Numeric vector of eJAB01 values for all input results.}
 }
 }

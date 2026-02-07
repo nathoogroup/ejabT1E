@@ -8,4 +8,4 @@ export(calibration_plot)
 export(ejab_pipeline)
 
 importFrom(stats, pchisq, qchisq, ppoints, qunif, qbeta, uniroot, runif)
-importFrom(graphics, plot, abline, lines, points)
+importFrom(graphics, plot, abline, lines, points, par)

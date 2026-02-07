@@ -36,11 +36,9 @@ devtools::install("ejabT1E")
 |----------|-------------|
 | `ejab01(p, n, q)` | Compute eJAB01 Bayes factor |
 | `objective_C(C, p, ejab, up)` | Closed-form objective for C* estimation |
-| `estimate_Cstar(p, ejab, up, grid)` | Grid search for optimal C* on [0, 10] |
+| `estimate_Cstar(p, ejab, up, grid_range, grid_n)` | Grid search for optimal C* on [1/3, 3] |
 | `detect_type1(p, ejab, alpha, Cstar)` | Identify candidate T1E indices |
 | `diagnostic_U(p, n, q, alpha, Cstar)` | Compute diagnostic U_i values |
-| `diagnostic_qqplot(U)` | QQ-plot of U_i against Unif(0,1) |
-| `diagnostic_qqplot_bf(U, BF)` | QQ-plot coloured by Bayes factor |
-| `posterior_t1e(p, ejab, alpha, obj, grid)` | Posterior P(T1E) per result |
-| `bayes_factor_t1e(posterior_prob, alpha)` | BF = posterior odds / prior odds |
-| `ejab_pipeline(df, up, alpha, grid, plot)` | Full pipeline wrapper |
+| `diagnostic_qqplot(U, band, conf, B, seed)` | QQ-plot of U_i against Unif(0,1) with simultaneous band |
+| `calibration_plot(p, ejab, up, grid_range, grid_n, n_alpha)` | Multi-panel calibration plot (proportion vs alpha for C grid) |
+| `ejab_pipeline(df, up, alpha, grid_range, grid_n, plot)` | Full pipeline wrapper |
