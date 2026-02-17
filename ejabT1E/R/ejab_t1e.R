@@ -563,14 +563,19 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
   graphics::abline(h = 1, col = "grey50", lty = 3)
 
   # Plot 3: Diagnostic QQ-plot at the pre-chosen alpha
-  if (!is.null(n) && !is.null(q)) {
-    idx <- which(p < alpha & ejab > Cstar_at_alpha)
-    if (length(idx) > 0) {
-      U_vals <- diagnostic_U(p[idx], n[idx], q[idx], alpha, Cstar_at_alpha)
-      diagnostic_qqplot_fit(U_vals, alpha = alpha, Cstar = Cstar_at_alpha, ...)
+  has_n_and_q <- !is.null(n) && !is.null(q)
+  if (has_n_and_q) {
+    if (length(n) == length(p) && length(q) == length(p)) {
+      idx <- which(p < alpha & ejab > Cstar_at_alpha)
+      if (length(idx) > 0) {
+        U_vals <- diagnostic_U(p[idx], n[idx], q[idx], alpha, Cstar_at_alpha)
+        diagnostic_qqplot_fit(U_vals, alpha = alpha, Cstar = Cstar_at_alpha, ...)
+      } else {
+        message("No candidates at alpha = ", alpha,
+                " with C* = ", round(Cstar_at_alpha, 4))
+      }
     } else {
-      message("No candidates at alpha = ", alpha,
-              " with C* = ", round(Cstar_at_alpha, 4))
+      message("n and q must have the same length as p")
     }
   }
 
