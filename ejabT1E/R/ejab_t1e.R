@@ -687,9 +687,8 @@ plot_data_summary <- function(data, alpha = 0.05, Cstar = NULL, extra_title = ""
     ggplot2::geom_rect(data = bands, ggplot2::aes(xmin = 0, xmax = 1, ymin = ybottom, ymax = ytop, fill = color),
               alpha = 0.2, inherit.aes = FALSE) +
     ggplot2::geom_point(ggplot2::aes(color = statisticalMethod), size = 1) +
-    ggplot2::ylim(-15, 9) +
     ggplot2::scale_x_continuous(name = "pValue", limits = c(0, 1)) +
-    ggplot2::scale_y_continuous(name = "ln(eJAB01)", breaks = seq(-15, 9, 2)) +
+    ggplot2::scale_y_continuous(name = "ln(eJAB01)", limits = c(-15, 9), breaks = seq(-15, 9, 2)) +
     ggplot2::scale_fill_identity() +
     ggplot2::scale_color_brewer(
       name = "Test Type",
@@ -739,9 +738,9 @@ plot_data_summary <- function(data, alpha = 0.05, Cstar = NULL, extra_title = ""
       plot.title = ggplot2::element_blank(),
       axis.title.x = ggplot2::element_blank(),
       axis.title.y = ggplot2::element_blank(),
-      plot.background = ggplot2::element_rect(fill = "white", color = "black", size = 1.5),
+      plot.background = ggplot2::element_rect(fill = "white", color = "black", linewidth = 1.5),
       axis.text = ggplot2::element_text(size = 8),
-      axis.ticks = ggplot2::element_line(size = 0.5)
+      axis.ticks = ggplot2::element_line(linewidth = 0.5)
     )
 
   print(cowplot::ggdraw(p) +
