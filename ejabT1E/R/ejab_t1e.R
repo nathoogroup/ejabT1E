@@ -472,7 +472,7 @@ diagnostic_qqplot_fit <- function(U, alpha = NULL, Cstar = NULL, band = TRUE,
 
   # Create title with alpha and Cstar if provided
   if (!is.null(alpha) && !is.null(Cstar)) {
-    main_title <- paste0("Diagnostic QQ-Plot: alpha = ", alpha, ", C* = ", round(Cstar, 4))
+    main_title <- paste0("Diagnostic QQ-Plot: alpha = ", alpha, ", C*(alpha) = ", round(Cstar, 4))
   } else {
     main_title <- "Diagnostic QQ-Plot"
   }
@@ -557,7 +557,7 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
   graphics::plot(fit$alpha_grid, fit$Cstar_alpha,
        type = "l", lwd = 2,
        xlab = expression(alpha),
-       ylab = expression(C^"*" * (alpha)),
+       ylab = bquote(C^"*" * "(" * alpha * ")"),
        main = "C*(alpha) vs alpha",
        ...)
   graphics::abline(h = 1, col = "grey50", lty = 3)
@@ -572,7 +572,7 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
         diagnostic_qqplot_fit(U_vals, alpha = alpha, Cstar = Cstar_at_alpha, ...)
       } else {
         message("No candidates at alpha = ", alpha,
-                " with C* = ", round(Cstar_at_alpha, 4))
+                " with C*(alpha) = ", round(Cstar_at_alpha, 4))
       }
     } else {
       message("n and q must have the same length as p")
@@ -702,11 +702,18 @@ plot_data_summary <- function(data, alpha = 0.05, Cstar = NULL, extra_title = ""
         "n \u2265 900k" = 8
       )
     ) +
-    ggplot2::geom_vline(xintercept = 0.05, linetype = "dashed", color = "black") +
+    ggplot2::geom_vline(xintercept = alpha, linetype = "dashed", color = "black") +
     ggplot2::geom_hline(yintercept = log(1/3), linetype = "dashed", color = "black") +
     ggplot2::geom_hline(yintercept = log(3), linetype = "dashed", color = "black") +
-    ggplot2::theme_minimal() +
-    ggplot2::ggtitle(paste("ln(eJAB01) vs pValue - Analyses:", total_analyses, extra_title))
+    ggplot2::theme_minimal()
+  
+  # Build title
+  plot_title <- paste0("ln(eJAB01) vs pValue - Analyses: ", total_analyses, 
+                       " (alpha = ", alpha, ", C*(alpha) = ", round(Cstar, 4), ")")
+  if (extra_title != "") {
+    plot_title <- paste0(plot_title, " ", extra_title)
+  }
+  p <- p + ggplot2::ggtitle(plot_title)
 
   # Add red circles around candidate Type I errors
   if (sum(candidate_t1e) > 0) {
