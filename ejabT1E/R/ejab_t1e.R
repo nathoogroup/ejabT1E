@@ -565,7 +565,10 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
   # Plot 3: Diagnostic QQ-plot at the pre-chosen alpha
   has_n_and_q <- !is.null(n) && !is.null(q)
   if (has_n_and_q) {
-    if (length(n) == length(p) && length(q) == length(p)) {
+    n_len <- length(n)
+    q_len <- length(q)
+    p_len <- length(p)
+    if (n_len == p_len && q_len == p_len) {
       idx <- which(p < alpha & ejab > Cstar_at_alpha)
       if (length(idx) > 0) {
         U_vals <- diagnostic_U(p[idx], n[idx], q[idx], alpha, Cstar_at_alpha)
