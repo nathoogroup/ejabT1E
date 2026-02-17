@@ -14,5 +14,5 @@ Description: Identifies candidate Type I errors in collections of NHST results
     QQ-plots.
 License: GPL-3
 Encoding: UTF-8
-Imports: stats, graphics
+Imports: stats, ggplot2
 RoxygenNote: 7.3.1

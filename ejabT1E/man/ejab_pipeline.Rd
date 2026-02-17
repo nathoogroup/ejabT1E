@@ -4,6 +4,9 @@
 \description{
 Runs the complete analysis: computes eJAB01 values, estimates C*,
 detects candidate Type I errors, and produces diagnostics.
+When \code{plot = TRUE}, produces an adaptive calibration plot
+(3 pages: calibration curve, C*(alpha) vs alpha, and diagnostic
+QQ-plot at the specified alpha).
 }
 \usage{
 ejab_pipeline(df, up = 0.05, alpha = 0.05,

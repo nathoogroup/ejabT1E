@@ -44,8 +44,8 @@ result$ejab        # eJAB01 values for all results
 | `estimate_Cstar(p, ejab, up, grid_range, grid_n)` | Grid search for optimal C* |
 | `detect_type1(p, ejab, alpha, Cstar)` | Identify candidate T1E indices |
 | `diagnostic_U(p, n, q, alpha, Cstar)` | Compute diagnostic U values |
-| `diagnostic_qqplot(U, band, conf, B, seed)` | QQ-plot with simultaneous confidence band |
-| `calibration_plot(p, ejab, up, grid_range, grid_n, n_alpha)` | Multi-panel calibration plot (proportion vs alpha for C grid) |
+| `diagnostic_qqplot(U, alpha, Cstar, band, conf, B, seed)` | QQ-plot with best-fit line and simultaneous confidence band |
+| `calibration_plot(p, ejab, up, alpha, grid_range, grid_n, n_alpha, n, q)` | Adaptive calibration plot using C*(alpha) (3 plots) |
 | `ejab_pipeline(df, up, alpha, grid_range, grid_n, plot)` | Full analysis pipeline |
 
 ## Method
@@ -71,11 +71,11 @@ fit <- estimate_Cstar(p, ejab, up = 0.05, grid_range = c(0.5, 2), grid_n = 100)
 
 ### Diagnostic QQ-Plot
 
-The diagnostic U values should follow Unif(0,1) if detected candidates are true Type I errors. The QQ-plot includes a 95% simultaneous confidence band (Monte Carlo calibrated).
+The diagnostic U values should follow Unif(0,1) if detected candidates are true Type I errors. The QQ-plot overlays a best-fit line (OLS) instead of the 45-degree line, since C* is estimated. Includes a 95% simultaneous confidence band (Monte Carlo calibrated), transformed to follow the best-fit line.
 
 ```r
-# With confidence band (default)
-diagnostic_qqplot(U, band = TRUE, conf = 0.95)
+# With confidence band and title showing alpha/C*
+diagnostic_qqplot(U, alpha = 0.05, Cstar = 0.01, band = TRUE, conf = 0.95)
 
 # Without band
 diagnostic_qqplot(U, band = FALSE)
@@ -85,17 +85,18 @@ Points outside the band are highlighted in red and returned in `$outside`.
 
 ### Calibration Plot
 
-Multi-panel plot showing observed contradiction rate vs alpha for a grid of C values. The reference line (slope 1/up) shows the expected rate under the null.
+Adaptive calibration plot using C*(alpha). For each alpha on a grid in [0, up], finds C*(alpha) such that the observed proportion of contradictions is closest to alpha/up. Produces three plots:
+
+1. **Calibration curve** using the adaptive C*(alpha) — should track the reference line (slope 1/up) closely
+2. **C*(alpha) vs alpha** — shows how the threshold varies (expected: decreasing)
+3. **Diagnostic QQ-plot** at the specified alpha using C*(alpha)
 
 ```r
-# Default: 18 panels (2 pages of 9) from C = 0 to C = 1
+# Default (3 plots, QQ-plot at alpha = 0.05)
+calibration_plot(p, ejab, up = 0.1, alpha = 0.05, n = n_vec, q = q_vec)
+
+# Without QQ-plot (omit n and q)
 calibration_plot(p, ejab, up = 0.1)
-
-# Custom range
-calibration_plot(p, ejab, up = 0.1, grid_range = c(0, 3))
-
-# Single panel at C = 1
-calibration_plot(p, ejab, up = 0.1, grid_range = c(1, 1))
 ```
 
 ## Input Requirements
