@@ -472,7 +472,7 @@ diagnostic_qqplot_fit <- function(U, alpha = NULL, Cstar = NULL, band = TRUE,
 
   # Create title with alpha and Cstar if provided
   if (!is.null(alpha) && !is.null(Cstar)) {
-    main_title <- bquote("Diagnostic QQ-Plot: " * alpha == .(alpha) * ", " * C^"*" == .(round(Cstar, 4)))
+    main_title <- paste0("Diagnostic QQ-Plot: alpha = ", alpha, ", C* = ", round(Cstar, 4))
   } else {
     main_title <- "Diagnostic QQ-Plot"
   }
