@@ -195,36 +195,25 @@ diagnostic_U <- function(p, n, q, alpha, Cstar) {
 #'
 #' Produces a QQ-plot of the diagnostic U_i values against
 #' Unif(0,1) theoretical quantiles. Linearity indicates that
-#' the left-tail uniformity assumption holds. A best-fit line
-#' (via OLS) is overlaid instead of the 45-degree line, since
-#' C* is estimated. Optionally adds a simultaneous confidence
-#' band based on Beta order statistics, transformed to follow the
-#' best-fit line rather than the 45-degree line.
+#' the left-tail uniformity assumption holds. Optionally adds
+#' a simultaneous 95% confidence band based on Beta order statistics.
 #'
 #' @param U Numeric vector of diagnostic U_i values
-#' @param alpha Significance level used for detection (displayed in title).
-#'   If NULL, omitted from title.
-#' @param Cstar C* value used for detection (displayed in title).
-#'   If NULL, omitted from title.
 #' @param band Logical; add simultaneous confidence band? (default TRUE)
 #' @param conf Confidence level for band (default 0.95)
 #' @param B Number of Monte Carlo simulations for band calibration (default 10000)
 #' @param seed Random seed for reproducibility (default 1)
-#' @param ... Additional arguments (currently unused, kept for compatibility)
+#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
 #' @return Invisibly, a list with components:
 #'   \describe{
 #'     \item{theoretical}{Theoretical quantiles}
 #'     \item{observed}{Observed (sorted) U values}
-#'     \item{intercept}{OLS intercept}
-#'     \item{slope}{OLS slope}
 #'     \item{lower}{Lower band (if band=TRUE)}
 #'     \item{upper}{Upper band (if band=TRUE)}
 #'     \item{outside}{Indices of observations outside band (if band=TRUE)}
 #'   }
 #' @export
-diagnostic_qqplot <- function(U, alpha = NULL, Cstar = NULL,
-                               band = TRUE, conf = 0.95, B = 10000,
-                               seed = 1, ...) {
+diagnostic_qqplot <- function(U, band = TRUE, conf = 0.95, B = 10000, seed = 1, ...) {
   n <- length(U)
   if (n == 0) {
     message("No candidate T1Es detected; cannot produce QQ-plot.")
@@ -234,28 +223,25 @@ diagnostic_qqplot <- function(U, alpha = NULL, Cstar = NULL,
   theoretical <- stats::ppoints(n)
   observed <- sort(U)
 
-  # OLS best-fit line (computed first so the confidence band can follow it)
-  fit_line <- stats::lm(observed ~ theoretical)
-  a <- stats::coef(fit_line)[1]
-  b <- stats::coef(fit_line)[2]
-
-  # Simultaneous confidence band (follows best-fit line)
-  # MC-calibrate pointwise level p* for Beta(i, n+1-i) bands such that
-  # simultaneous coverage = conf, then transform bands through OLS fit.
+  # Compute simultaneous band if requested
   lower <- upper <- outside <- NULL
   if (band && n >= 2) {
+    # Monte Carlo calibration to find pointwise level giving simultaneous coverage
     set.seed(seed)
     U_sim <- matrix(stats::runif(n * B), nrow = n, ncol = B)
     U_sim <- apply(U_sim, 2, sort)
     i <- seq_len(n)
 
+    # Function to estimate simultaneous coverage for a given pointwise level p
     coverage_hat <- function(p) {
       tail <- (1 - p) / 2
       L <- stats::qbeta(tail, i, n + 1 - i)
       U <- stats::qbeta(1 - tail, i, n + 1 - i)
-      mean(colSums(U_sim >= L & U_sim <= U) == n)
+      inside <- colSums(U_sim >= L & U_sim <= U) == n
+      mean(inside)
     }
 
+    # Find p* such that simultaneous coverage = conf
     f <- function(p) coverage_hat(p) - conf
     if (f(conf) >= 0) {
       p_star <- conf
@@ -263,184 +249,117 @@ diagnostic_qqplot <- function(U, alpha = NULL, Cstar = NULL,
       p_star <- stats::uniroot(f, lower = conf, upper = 0.9999, tol = 1e-4)$root
     }
 
-    # Raw Unif(0,1) bands from Beta order statistics
+    # Construct band
     tail_star <- (1 - p_star) / 2
-    lower_raw <- stats::qbeta(tail_star, i, n + 1 - i)
-    upper_raw <- stats::qbeta(1 - tail_star, i, n + 1 - i)
+    lower <- stats::qbeta(tail_star, i, n + 1 - i)
+    upper <- stats::qbeta(1 - tail_star, i, n + 1 - i)
 
-    # Transform bands to follow the best-fit line
-    lower <- a + b * lower_raw
-    upper <- a + b * upper_raw
-
+    # Find points outside band
     outside_ord <- which(observed < lower | observed > upper)
     outside <- order(U)[outside_ord]
   }
 
-  ## --- ggplot2 version ---
-  main_title <- "Diagnostic QQ-Plot"
-  if (!is.null(alpha) && !is.null(Cstar)) {
-    main_title <- paste0("Diagnostic QQ-Plot at \u03b1 = ", alpha,
-                         ", C* = ", round(Cstar, 4))
-  } else if (!is.null(alpha)) {
-    main_title <- paste0("Diagnostic QQ-Plot at \u03b1 = ", alpha)
-  }
-
-  df_plot <- data.frame(theoretical = theoretical, observed = observed)
-  is_outside <- rep(FALSE, n)
-  if (band && n >= 2) is_outside[outside_ord] <- TRUE
-  df_plot$outside <- is_outside
-
-  p <- ggplot2::ggplot(df_plot, ggplot2::aes(x = theoretical, y = observed)) +
-    ggplot2::geom_point(ggplot2::aes(colour = outside), size = 1.5, shape = 16) +
-    ggplot2::scale_colour_manual(values = c("FALSE" = "black", "TRUE" = "red"),
-                                  guide = "none") +
-    ggplot2::geom_abline(intercept = a, slope = b, colour = "red", linewidth = 1) +
-    ggplot2::labs(x = "Theoretical Unif(0,1) Quantiles",
-                  y = "Observed U_i Quantiles",
-                  title = main_title) +
-    ggplot2::theme_minimal()
+  # Plot
+  graphics::plot(theoretical, observed,
+       xlab = "Theoretical Unif(0,1) Quantiles",
+       ylab = "Observed U_i Quantiles",
+       main = "Diagnostic QQ-Plot",
+       pch = 16, cex = 0.6, ...)
+  graphics::abline(0, 1, col = "red", lwd = 2)
 
   if (band && n >= 2) {
-    df_band <- data.frame(theoretical = theoretical, lower = lower, upper = upper)
-    p <- p +
-      ggplot2::geom_line(data = df_band,
-                          ggplot2::aes(x = theoretical, y = lower),
-                          colour = "grey50", linetype = "dashed") +
-      ggplot2::geom_line(data = df_band,
-                          ggplot2::aes(x = theoretical, y = upper),
-                          colour = "grey50", linetype = "dashed")
+    graphics::lines(theoretical, lower, col = "grey50", lty = 2)
+    graphics::lines(theoretical, upper, col = "grey50", lty = 2)
+    # Highlight outside points
+    if (length(outside_ord) > 0) {
+      graphics::points(theoretical[outside_ord], observed[outside_ord],
+                       pch = 16, cex = 0.6, col = "red")
+    }
   }
-
-  print(p)
 
   invisible(list(
     theoretical = theoretical,
     observed = observed,
-    intercept = a,
-    slope = b,
     lower = lower,
     upper = upper,
-    outside = outside,
-    plot = p
+    outside = outside
   ))
 }
 
 
-#' Adaptive calibration plot using C*(alpha)
+#' Calibration plot (Figure 3a style)
 #'
-#' For each alpha on a grid in \code{[0, up]}, finds C*(alpha) such that
-#' the observed proportion of contradictions (p <= alpha AND eJAB01 > C)
-#' is closest to the target rate alpha/up.  Produces three plots:
-#' \enumerate{
-#'   \item Calibration curve: observed proportion vs alpha using the
-#'         adaptive C*(alpha).  Should track the reference line (slope 1/up)
-#'         closely by construction.
-#'   \item C*(alpha) vs alpha: shows how the threshold changes with alpha
-#'         (expected: decreasing).
-#'   \item Diagnostic QQ-plot at the specified \code{alpha}, using
-#'         C*(\code{alpha}).
-#' }
+#' Multi-panel calibration plot showing observed proportion of contradictions
+#' (p <= alpha AND eJAB01 > C) against alpha for a grid of C values. If the
+#' method is well-calibrated, the curve should follow the reference line
+#' with slope 1/up. Use \code{grid_range = c(C, C)} for a single-panel plot
+#' at a specific C value.
 #'
 #' @param p Numeric vector of p-values (should span the full range used in
 #'   estimation, not just significant results)
 #' @param ejab Numeric vector of eJAB01 values (same length as \code{p})
 #' @param up Upper bound for the alpha grid (default 0.1)
-#' @param alpha Significance level for the diagnostic QQ-plot (default 0.05)
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
-#'   C search grid (default \code{c(0, 1)})
-#' @param grid_n Number of C grid points (default 200)
-#' @param n_alpha Number of alpha grid points (default 200)
-#' @param n Numeric vector of sample sizes (same length as \code{p}); needed
-#'   for the QQ-plot diagnostic.  If \code{NULL}, the QQ-plot is skipped.
-#' @param q Numeric vector of parameter dimensions (same length as \code{p});
-#'   needed for the QQ-plot diagnostic.  If \code{NULL}, the QQ-plot is skipped.
-#' @param ... Additional arguments (currently unused, kept for compatibility)
-#' @return Invisibly, a list with components:
-#'   \describe{
-#'     \item{alpha_grid}{Numeric vector of alpha values used.}
-#'     \item{Cstar_alpha}{Numeric vector of C*(alpha) values.}
-#'     \item{proportions}{Numeric vector of observed proportions at each alpha.}
-#'     \item{Cstar_at_alpha}{C* at the specified \code{alpha}.}
-#'   }
+#'   C grid (default \code{c(0, 1)}). Use \code{c(C, C)} for a single panel.
+#' @param grid_n Number of C grid points (default 18). Panels are arranged
+#'   in a 3x3 grid; more than 9 panels will span multiple pages.
+#' @param n_alpha Number of alpha grid points per panel (default 200)
+#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
+#' @return Invisibly, a list with components \code{C_grid} (numeric vector of
+#'   C values), \code{alpha_grid} (numeric vector of alpha values), and
+#'   \code{proportions} (matrix with one row per C value and one column per
+#'   alpha value).
 #' @export
-calibration_plot <- function(p, ejab, up = 0.1, alpha = 0.05,
-                              grid_range = c(0, 1), grid_n = 200,
-                              n_alpha = 200, n = NULL, q = NULL, ...) {
-  # --- Build grids ---
-  alpha_grid <- seq(0, up, length.out = n_alpha + 1)[-1]  # skip alpha=0
-  C_grid <- seq(grid_range[1], grid_range[2], length.out = grid_n)
+calibration_plot <- function(p, ejab, up = 0.1,
+                              grid_range = c(0, 1), grid_n = 18,
+                              n_alpha = 200, ...) {
+  # Build C grid (same pattern as estimate_Cstar)
+  if (grid_range[1] == grid_range[2]) {
+    C_grid <- grid_range[1]
+  } else {
+    C_grid <- seq(grid_range[1], grid_range[2], length.out = grid_n)
+  }
+
+  alpha_grid <- seq(0, up, length.out = n_alpha)
   N <- sum(p < up)
 
-  Cstar_alpha  <- numeric(length(alpha_grid))
-  proportions  <- numeric(length(alpha_grid))
-
-  # --- For each alpha, find C*(alpha) ---
-  for (i in seq_along(alpha_grid)) {
-    a <- alpha_grid[i]
-    target <- a / up
-
-    props <- vapply(C_grid, function(C) {
+  # Compute proportions: one row per C, one column per alpha
+  proportions <- vapply(C_grid, function(C) {
+    vapply(alpha_grid, function(a) {
       sum(p <= a & ejab > C) / N
     }, numeric(1))
-
-    best <- which.min((props - target)^2)
-    Cstar_alpha[i] <- C_grid[best]
-    proportions[i] <- props[best]
+  }, numeric(n_alpha))
+  # vapply returns n_alpha x length(C_grid); transpose so rows = C values
+  proportions <- if (length(C_grid) == 1) {
+    matrix(proportions, nrow = 1)
+  } else {
+    t(proportions)
   }
 
-  # C* at the specified alpha
-  nearest <- which.min(abs(alpha_grid - alpha))
-  Cstar_at_alpha <- Cstar_alpha[nearest]
+  # Determine panel layout (max 9 per page, auto-paginates in PDF)
+  n_panels <- length(C_grid)
+  per_page <- min(n_panels, 9)
+  n_col <- ceiling(sqrt(per_page))
+  n_row <- ceiling(per_page / n_col)
 
-  ## --- ggplot2 versions ---
-  df_cal <- data.frame(alpha = alpha_grid, proportion = proportions)
+  old_par <- graphics::par(mfrow = c(n_row, n_col), mar = c(4, 4, 2, 1))
+  on.exit(graphics::par(old_par))
 
-  # Plot 1: Calibration curve
-  p1 <- ggplot2::ggplot(df_cal, ggplot2::aes(x = alpha, y = proportion)) +
-    ggplot2::geom_line(linewidth = 1) +
-    ggplot2::geom_abline(intercept = 0, slope = 1 / up,
-                          colour = "red", linetype = "dashed", linewidth = 1) +
-    ggplot2::xlim(0, up) +
-    ggplot2::ylim(0, max(proportions, 1)) +
-    ggplot2::labs(x = expression(alpha),
-                  y = "Observed Proportion",
-                  title = paste0("Calibration using C*(\u03b1)")) +
-    ggplot2::theme_minimal()
-
-  # Plot 2: C*(alpha) vs alpha
-  df_cstar <- data.frame(alpha = alpha_grid, Cstar = Cstar_alpha)
-
-  p2 <- ggplot2::ggplot(df_cstar, ggplot2::aes(x = alpha, y = Cstar)) +
-    ggplot2::geom_line(linewidth = 1) +
-    ggplot2::geom_hline(yintercept = 1, colour = "grey50", linetype = "dotted") +
-    ggplot2::coord_cartesian(ylim = c(min(Cstar_alpha) * 0.9, max(Cstar_alpha) * 1.1)) +
-    ggplot2::labs(x = expression(alpha),
-                  y = expression(C^"*" * (alpha)),
-                  title = paste0("C*(\u03b1) vs \u03b1")) +
-    ggplot2::theme_minimal()
-
-  # Plot 3: Diagnostic QQ-plot at specified alpha
-  p3 <- NULL
-  if (!is.null(n) && !is.null(q)) {
-    idx <- which(p < alpha & ejab > Cstar_at_alpha)
-    if (length(idx) > 0) {
-      U <- diagnostic_U(p[idx], n[idx], q[idx], alpha, Cstar_at_alpha)
-      qq_result <- diagnostic_qqplot(U, alpha = alpha, Cstar = Cstar_at_alpha)
-      p3 <- qq_result$plot
-    } else {
-      message("No candidates at alpha = ", alpha, " with C* = ",
-              round(Cstar_at_alpha, 4))
-    }
+  for (i in seq_along(C_grid)) {
+    prop <- proportions[i, ]
+    graphics::plot(alpha_grid, prop,
+         type = "l", lwd = 2,
+         xlab = expression(alpha),
+         ylab = "Observed Prop.",
+         xlim = c(0, up),
+         ylim = c(0, max(prop, up)),
+         main = bquote(C == .(round(C_grid[i], 3))),
+         ...)
+    graphics::abline(0, 1 / up, col = "red", lty = 2, lwd = 2)
   }
 
-  print(p1)
-  print(p2)
-
-  invisible(list(alpha_grid = alpha_grid,
-                 Cstar_alpha = Cstar_alpha,
-                 proportions = proportions,
-                 Cstar_at_alpha = Cstar_at_alpha,
-                 plots = list(calibration = p1, cstar = p2, qqplot = p3)))
+  invisible(list(C_grid = C_grid, alpha_grid = alpha_grid,
+                 proportions = proportions))
 }
 
 
@@ -505,18 +424,18 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
   # Detect candidate T1Es
   idx <- detect_type1(df$p, ejab_vals, alpha, Cfit$Cstar)
 
-  # Calibration plot (includes QQ-plot as 3rd panel)
-  cal <- NULL
+  # Calibration plot
   if (plot) {
-    cal <- calibration_plot(df$p, ejab_vals, up = up, alpha = alpha,
-                            n = df$n, q = df$q)
+    calibration_plot(df$p, ejab_vals, up = up)
   }
 
   # Compute diagnostics for candidates
-  Cstar_alpha <- if (!is.null(cal)) cal$Cstar_at_alpha else Cfit$Cstar
   U <- NULL
   if (length(idx) > 0) {
     U <- diagnostic_U(df$p[idx], df$n[idx], df$q[idx], alpha, Cfit$Cstar)
+    if (plot) {
+      diagnostic_qqplot(U)
+    }
   }
 
   list(
