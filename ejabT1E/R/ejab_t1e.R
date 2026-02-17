@@ -363,6 +363,379 @@ calibration_plot <- function(p, ejab, up = 0.1,
 }
 
 
+#' Estimate C* for different alpha values
+#'
+#' For each alpha value on a grid, finds the C value that minimizes the squared
+#' difference between the observed proportion of contradictions and the target
+#' proportion alpha/up.
+#'
+#' @param p Numeric vector of p-values
+#' @param ejab Numeric vector of eJAB01 values (same length as \code{p})
+#' @param up Upper bound for the alpha grid (default 0.1)
+#' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
+#'   C grid (default \code{c(0, 1)})
+#' @param grid_n Number of C grid points (default 200)
+#' @param n_alpha Number of alpha grid points (default 200)
+#' @return A list with components:
+#'   \describe{
+#'     \item{alpha_grid}{Numeric vector of alpha values}
+#'     \item{Cstar_alpha}{Numeric vector of C* values, one per alpha}
+#'     \item{proportions}{Numeric vector of observed proportions at each alpha}
+#'   }
+#' @export
+estimate_Cstar_alpha <- function(p, ejab, up = 0.1,
+                                  grid_range = c(0, 1), grid_n = 200,
+                                  n_alpha = 200) {
+  alpha_grid <- seq(0, up, length.out = n_alpha + 1)[-1]
+  C_grid     <- seq(grid_range[1], grid_range[2], length.out = grid_n)
+  N          <- sum(p < up)
+
+  Cstar_alpha <- numeric(length(alpha_grid))
+  proportions <- numeric(length(alpha_grid))
+
+  for (i in seq_along(alpha_grid)) {
+    a      <- alpha_grid[i]
+    target <- a / up
+    props  <- vapply(C_grid, function(C) sum(p <= a & ejab > C) / N, numeric(1))
+    best   <- which.min((props - target)^2)
+    Cstar_alpha[i] <- C_grid[best]
+    proportions[i] <- props[best]
+  }
+
+  list(alpha_grid = alpha_grid,
+       Cstar_alpha = Cstar_alpha,
+       proportions = proportions)
+}
+
+
+#' Diagnostic QQ-plot with alpha and C* in title
+#'
+#' Wrapper around \code{\link{diagnostic_qqplot}} that includes alpha and C*
+#' values in the plot title.
+#'
+#' @param U Numeric vector of diagnostic U_i values
+#' @param alpha Significance level (for title)
+#' @param Cstar Threshold value (for title)
+#' @param band Logical; add simultaneous confidence band? (default TRUE)
+#' @param conf Confidence level for band (default 0.95)
+#' @param B Number of Monte Carlo simulations for band calibration (default 10000)
+#' @param seed Random seed for reproducibility (default 1)
+#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
+#' @return Invisibly, same as \code{\link{diagnostic_qqplot}}
+#' @export
+diagnostic_qqplot_fit <- function(U, alpha = NULL, Cstar = NULL, band = TRUE,
+                                   conf = 0.95, B = 10000, seed = 1, ...) {
+  n <- length(U)
+  if (n == 0) {
+    message("No candidate T1Es detected; cannot produce QQ-plot.")
+    return(invisible(NULL))
+  }
+
+  theoretical <- stats::ppoints(n)
+  observed <- sort(U)
+
+  # Compute simultaneous band if requested
+  lower <- upper <- outside <- NULL
+  if (band && n >= 2) {
+    # Monte Carlo calibration to find pointwise level giving simultaneous coverage
+    set.seed(seed)
+    U_sim <- matrix(stats::runif(n * B), nrow = n, ncol = B)
+    U_sim <- apply(U_sim, 2, sort)
+    i <- seq_len(n)
+
+    # Function to estimate simultaneous coverage for a given pointwise level p
+    coverage_hat <- function(p) {
+      tail <- (1 - p) / 2
+      L <- stats::qbeta(tail, i, n + 1 - i)
+      U <- stats::qbeta(1 - tail, i, n + 1 - i)
+      inside <- colSums(U_sim >= L & U_sim <= U) == n
+      mean(inside)
+    }
+
+    # Find p* such that simultaneous coverage = conf
+    f <- function(p) coverage_hat(p) - conf
+    if (f(conf) >= 0) {
+      p_star <- conf
+    } else {
+      p_star <- stats::uniroot(f, lower = conf, upper = 0.9999, tol = 1e-4)$root
+    }
+
+    # Construct band
+    tail_star <- (1 - p_star) / 2
+    lower <- stats::qbeta(tail_star, i, n + 1 - i)
+    upper <- stats::qbeta(1 - tail_star, i, n + 1 - i)
+
+    # Find points outside band
+    outside_ord <- which(observed < lower | observed > upper)
+    outside <- order(U)[outside_ord]
+  }
+
+  # Create title with alpha and Cstar if provided
+  if (!is.null(alpha) && !is.null(Cstar)) {
+    main_title <- bquote("Diagnostic QQ-Plot: " * alpha == .(alpha) * ", " * C^"*" == .(round(Cstar, 4)))
+  } else {
+    main_title <- "Diagnostic QQ-Plot"
+  }
+
+  # Plot
+  graphics::plot(theoretical, observed,
+       xlab = "Theoretical Unif(0,1) Quantiles",
+       ylab = "Observed U_i Quantiles",
+       main = main_title,
+       pch = 16, cex = 0.6, ...)
+  graphics::abline(0, 1, col = "red", lwd = 2)
+
+  if (band && n >= 2) {
+    graphics::lines(theoretical, lower, col = "grey50", lty = 2)
+    graphics::lines(theoretical, upper, col = "grey50", lty = 2)
+    # Highlight outside points
+    if (length(outside_ord) > 0) {
+      graphics::points(theoretical[outside_ord], observed[outside_ord],
+                       pch = 16, cex = 0.6, col = "red")
+    }
+  }
+
+  invisible(list(
+    theoretical = theoretical,
+    observed = observed,
+    lower = lower,
+    upper = upper,
+    outside = outside
+  ))
+}
+
+
+#' Calibration plot using adaptive C*(alpha)
+#'
+#' Main calibration wrapper: runs \code{\link{estimate_Cstar_alpha}} and produces
+#' 3 plots: (1) calibration curve using adaptive C*(alpha), (2) C*(alpha) vs alpha,
+#' and (3) diagnostic QQ-plot at the specified alpha.
+#'
+#' @param p Numeric vector of p-values (should span the full range used in
+#'   estimation, not just significant results)
+#' @param ejab Numeric vector of eJAB01 values (same length as \code{p})
+#' @param up Upper bound for the alpha grid (default 0.1)
+#' @param alpha Significance level for T1E detection and QQ-plot (default 0.05)
+#' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
+#'   C grid (default \code{c(0, 1)})
+#' @param grid_n Number of C grid points (default 200)
+#' @param n_alpha Number of alpha grid points (default 200)
+#' @param n Numeric vector of sample sizes (required for QQ-plot)
+#' @param q Numeric vector of parameter dimensions (required for QQ-plot)
+#' @param ... Additional arguments passed to \code{\link[graphics]{plot}}
+#' @return Invisibly, a list with components:
+#'   \describe{
+#'     \item{alpha_grid}{Numeric vector of alpha values}
+#'     \item{Cstar_alpha}{Numeric vector of C* values}
+#'     \item{proportions}{Numeric vector of observed proportions}
+#'     \item{Cstar_at_alpha}{C* value at the specified alpha}
+#'   }
+#' @export
+calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
+                                  grid_range = c(0, 1), grid_n = 200,
+                                  n_alpha = 200, n = NULL, q = NULL, ...) {
+  fit <- estimate_Cstar_alpha(p, ejab, up, grid_range, grid_n, n_alpha)
+
+  nearest        <- which.min(abs(fit$alpha_grid - alpha))
+  Cstar_at_alpha <- fit$Cstar_alpha[nearest]
+
+  old_par <- graphics::par(mfrow = c(1, 3), mar = c(4, 4, 2, 1))
+  on.exit(graphics::par(old_par))
+
+  # Plot 1: Calibration curve
+  graphics::plot(fit$alpha_grid, fit$proportions,
+       type = "l", lwd = 2,
+       xlab = expression(alpha),
+       ylab = "Observed Proportion",
+       xlim = c(0, up),
+       ylim = c(0, max(fit$proportions, 1)),
+       main = expression(paste("Calibration using adaptive ", C^"*", "(", alpha, ")")),
+       ...)
+  graphics::abline(0, 1 / up, col = "red", lty = 2, lwd = 2)
+
+  # Plot 2: C*(alpha) vs alpha
+  graphics::plot(fit$alpha_grid, fit$Cstar_alpha,
+       type = "l", lwd = 2,
+       xlab = expression(alpha),
+       ylab = expression(C^"*" * (alpha)),
+       main = expression(paste(C^"*", "(", alpha, ") vs ", alpha)),
+       ...)
+  graphics::abline(h = 1, col = "grey50", lty = 3)
+
+  # Plot 3: Diagnostic QQ-plot at the pre-chosen alpha
+  if (!is.null(n) && !is.null(q)) {
+    idx <- which(p < alpha & ejab > Cstar_at_alpha)
+    if (length(idx) > 0) {
+      U_vals <- diagnostic_U(p[idx], n[idx], q[idx], alpha, Cstar_at_alpha)
+      diagnostic_qqplot_fit(U_vals, alpha = alpha, Cstar = Cstar_at_alpha, ...)
+    } else {
+      message("No candidates at alpha = ", alpha,
+              " with C* = ", round(Cstar_at_alpha, 4))
+    }
+  }
+
+  invisible(list(alpha_grid = fit$alpha_grid,
+                 Cstar_alpha = fit$Cstar_alpha,
+                 proportions = fit$proportions,
+                 Cstar_at_alpha = Cstar_at_alpha))
+}
+
+
+#' Plot data summary with candidate Type I errors highlighted
+#'
+#' Creates a plot of ln(eJAB01) vs pValue with colored bands and an inset plot.
+#' Candidate Type I errors (p < alpha AND eJAB01 > Cstar) are marked with red circles.
+#'
+#' @param data Data frame with columns: \code{JAB} (eJAB01 values), \code{N}
+#'   (sample sizes), \code{pValue} (p-values), \code{statisticalMethod}
+#'   (test types), \code{analysisId} (analysis identifiers)
+#' @param alpha Significance level for detecting candidate Type I errors
+#'   (default 0.05)
+#' @param Cstar Threshold value for eJAB01 (default NULL, will be estimated
+#'   if not provided)
+#' @param extra_title Additional text to append to plot title (default "")
+#' @return The ggplot object (invisibly)
+#' @examples
+#' # Example usage with data frame containing JAB, N, pValue, etc.
+#' # plot_data_summary(my_data, alpha = 0.05, Cstar = 1.0)
+#' @export
+plot_data_summary <- function(data, alpha = 0.05, Cstar = NULL, extra_title = "") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("ggplot2 package is required for plot_data_summary")
+  }
+  if (!requireNamespace("cowplot", quietly = TRUE)) {
+    stop("cowplot package is required for plot_data_summary")
+  }
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("dplyr package is required for plot_data_summary")
+  }
+
+  # If Cstar not provided, estimate it
+  if (is.null(Cstar)) {
+    # Filter to p < alpha for estimation
+    p_sub <- data$pValue[data$pValue < alpha]
+    ejab_sub <- data$JAB[data$pValue < alpha]
+    if (length(p_sub) > 0) {
+      Cfit <- estimate_Cstar(p_sub, ejab_sub, up = alpha)
+      Cstar <- Cfit$Cstar
+    } else {
+      Cstar <- 1.0  # Default if no data
+    }
+  }
+
+  # Identify candidate Type I errors: p < alpha AND JAB > Cstar
+  candidate_t1e <- data$pValue < alpha & data$JAB > Cstar
+
+  # Process the input data
+  data_summary2 <- data %>%
+    dplyr::mutate(
+      logJAB = log(JAB),
+      N_shape = dplyr::case_when(
+        N < 30 ~ "n < 30",
+        N >= 30 & N < 900 ~ "30 \u2264 n < 900",
+        N >= 900 & N < 30000 ~ "900 \u2264 n < 30k",
+        N >= 30000 & N < 900000 ~ "30k \u2264 n < 900k",
+        N >= 900000 ~ "n \u2265 900k"
+      ),
+      N_shape = factor(
+        N_shape,
+        levels = c(
+          "n < 30",
+          "30 \u2264 n < 900",
+          "900 \u2264 n < 30k",
+          "30k \u2264 n < 900k",
+          "n \u2265 900k"
+        )
+      ),
+      is_candidate_t1e = candidate_t1e
+    )
+
+  total_analyses <- data_summary2 %>%
+    dplyr::pull(analysisId) %>%
+    unique() %>%
+    length()
+
+  test_counts <- data_summary2 %>%
+    dplyr::group_by(statisticalMethod) %>%
+    dplyr::summarise(n = dplyr::n_distinct(analysisId), .groups = "drop")
+
+  test_labels <- setNames(
+    paste0(test_counts$statisticalMethod, " (n=", test_counts$n, ")"),
+    test_counts$statisticalMethod
+  )
+
+  data_summary2 <- data_summary2 %>%
+    dplyr::mutate(statisticalMethod = factor(statisticalMethod, levels = names(test_labels)))
+
+  # Define bands
+  bands <- data.frame(
+    ybottom = c(-15, log(1/3), log(3)),
+    ytop    = c(log(1/3), log(3), 9),
+    color   = c("green", "grey", "red")
+  )
+
+  # Main plot
+  p <- ggplot2::ggplot(data_summary2, ggplot2::aes(x = pValue, y = logJAB, shape = N_shape)) +
+    ggplot2::geom_rect(data = bands, ggplot2::aes(xmin = 0, xmax = 1, ymin = ybottom, ymax = ytop, fill = color),
+              alpha = 0.2, inherit.aes = FALSE) +
+    ggplot2::geom_point(ggplot2::aes(color = statisticalMethod), size = 1) +
+    ggplot2::ylim(-15, 9) +
+    ggplot2::scale_x_continuous(name = "pValue", limits = c(0, 1)) +
+    ggplot2::scale_y_continuous(name = "ln(eJAB01)", breaks = seq(-15, 9, 2)) +
+    ggplot2::scale_fill_identity() +
+    ggplot2::scale_color_brewer(
+      name = "Test Type",
+      palette = "Set3", labels = test_labels
+    ) +
+    ggplot2::scale_shape_manual(
+      name = "Sample Size",
+      values = c(
+        "n < 30" = 17,
+        "30 \u2264 n < 900" = 15,
+        "900 \u2264 n < 30k" = 16,
+        "30k \u2264 n < 900k" = 1,
+        "n \u2265 900k" = 8
+      )
+    ) +
+    ggplot2::geom_vline(xintercept = 0.05, linetype = "dashed", color = "black") +
+    ggplot2::geom_hline(yintercept = log(1/3), linetype = "dashed", color = "black") +
+    ggplot2::geom_hline(yintercept = log(3), linetype = "dashed", color = "black") +
+    ggplot2::theme_minimal() +
+    ggplot2::ggtitle(paste("ln(eJAB01) vs pValue - Analyses:", total_analyses, extra_title))
+
+  # Add red circles around candidate Type I errors
+  if (sum(candidate_t1e) > 0) {
+    candidate_data <- data_summary2[candidate_t1e, ]
+    p <- p + ggplot2::geom_point(
+      data = candidate_data,
+      ggplot2::aes(x = pValue, y = logJAB),
+      shape = 1, size = 3, color = "red", stroke = 1.5,
+      inherit.aes = FALSE
+    )
+  }
+
+  # Inset plot
+  inset_plot <- p +
+    ggplot2::coord_cartesian(xlim = c(0, 0.05), ylim = c(-3, 3)) +
+    ggplot2::scale_x_continuous(name = "", breaks = c(0, 0.025, 0.05)) +
+    ggplot2::scale_y_continuous(name = "", breaks = c(-3, 0, 3)) +
+    ggplot2::theme(
+      legend.position = "none",
+      plot.title = ggplot2::element_blank(),
+      axis.title.x = ggplot2::element_blank(),
+      axis.title.y = ggplot2::element_blank(),
+      plot.background = ggplot2::element_rect(fill = "white", color = "black", size = 1.5),
+      axis.text = ggplot2::element_text(size = 8),
+      axis.ticks = ggplot2::element_line(size = 0.5)
+    )
+
+  print(cowplot::ggdraw(p) +
+          cowplot::draw_plot(inset_plot, x = 0.2, y = 0.1, width = 0.4, height = 0.4))
+
+  invisible(p)
+}
+
+
 #' Full eJAB Type I Error Detection Pipeline
 #'
 #' Runs the complete analysis: computes eJAB01 values, estimates C*,
