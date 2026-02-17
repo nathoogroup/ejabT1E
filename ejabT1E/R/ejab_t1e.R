@@ -549,7 +549,7 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
        ylab = "Observed Proportion",
        xlim = c(0, up),
        ylim = c(0, max(fit$proportions, 1)),
-       main = expression(paste("Calibration using adaptive ", C^"*", "(", alpha, ")")),
+       main = "Calibration using adaptive C*(alpha)",
        ...)
   graphics::abline(0, 1 / up, col = "red", lty = 2, lwd = 2)
 
@@ -558,7 +558,7 @@ calibration_plot_new <- function(p, ejab, up = 0.1, alpha = 0.05,
        type = "l", lwd = 2,
        xlab = expression(alpha),
        ylab = expression(C^"*" * (alpha)),
-       main = expression(paste(C^"*", "(", alpha, ") vs ", alpha)),
+       main = "C*(alpha) vs alpha",
        ...)
   graphics::abline(h = 1, col = "grey50", lty = 3)
 
