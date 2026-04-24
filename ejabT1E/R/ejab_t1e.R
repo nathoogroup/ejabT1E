@@ -392,16 +392,7 @@ calibration_plot <- function(p, ejab, up = 0.1, alpha = 0.05,
        ...)
   graphics::abline(0, 1 / up, col = "red", lty = 2, lwd = 2)
 
-  # --- Plot 2: C*(alpha) vs alpha ---
-  graphics::plot(alpha_grid, Cstar_alpha,
-       type = "l", lwd = 2,
-       xlab = expression(alpha),
-       ylab = expression(C^"*" * (alpha)),
-       main = expression(paste(C^"*", "(", alpha, ") vs ", alpha)),
-       ...)
-  graphics::abline(h = 1, col = "grey50", lty = 3)
-
-  # --- Plot 3: Diagnostic QQ-plot at specified alpha ---
+  # --- Plot 2: Diagnostic QQ-plot at specified alpha ---
   if (!is.null(n) && !is.null(q)) {
     idx <- which(p < alpha & ejab > Cstar_at_alpha)
     if (length(idx) > 0) {
