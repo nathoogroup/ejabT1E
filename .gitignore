@@ -1,0 +1,24 @@
+# R CMD check output
+ejabT1E.Rcheck/
+
+# Build artifacts
+*.tar.gz
+*.zip
+
+# R session files
+.Rhistory
+.RData
+.Rproj.user/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large data files (tracked separately or too large for git)
+PackageTests/CTE05 (1).csv
+PackageTests/CTE05_candidates.csv
+
+# Generated output (reproducible from scripts)
+PackageTests/CTE05_results.txt
+PackageTests/CTE05_diagnostic_qqplot.pdf
+PackageTests/CTE05_diagnostic_qqplot_bf.pdf
