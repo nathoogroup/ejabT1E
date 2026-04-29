@@ -36,7 +36,7 @@ devtools::install("ejabT1E")
 |----------|-------------|
 | `ejab01(p, n, q)` | Compute eJAB01 Bayes factor |
 | `objective_C(C, p, ejab, up)` | Closed-form objective for C* estimation |
-| `estimate_Cstar(p, ejab, up, grid_range, grid_n)` | Grid search for optimal C* on [1/3, 3] |
+| `estimate_Cstar(p, ejab, up, grid_range, grid_n)` | Grid search for optimal C* on [0, 3] |
 | `detect_type1(p, ejab, alpha, Cstar)` | Identify candidate T1E indices |
 | `diagnostic_U(p, n, q, alpha, Cstar)` | Compute diagnostic U_i values |
 | `diagnostic_qqplot(U, band, conf, B, seed)` | QQ-plot of U_i against Unif(0,1) with simultaneous band |

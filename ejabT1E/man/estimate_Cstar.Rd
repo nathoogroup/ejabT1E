@@ -3,17 +3,17 @@
 \title{Grid Search for C*}
 \description{
 Finds the value of C on a grid that minimizes the objective function.
-The default grid spans \code{c(1/3, 3)} with 200 points.
+The default grid spans \code{c(0, 3)} with 200 points.
 }
 \usage{
-estimate_Cstar(p, ejab, up = 0.05, grid_range = c(1/3, 3), grid_n = 200)
+estimate_Cstar(p, ejab, up = 0.05, grid_range = c(0, 3), grid_n = 200)
 }
 \arguments{
 \item{p}{Numeric vector of p-values.}
 \item{ejab}{Numeric vector of eJAB01 values.}
 \item{up}{Upper bound (default 0.05).}
 \item{grid_range}{Length-2 numeric vector \code{c(lower, upper)} for the
-  C grid (default \code{c(1/3, 3)}). Use \code{c(C, C)} to fix C at a
+  C grid (default \code{c(0, 3)}). Use \code{c(C, C)} to fix C at a
   single value.}
 \item{grid_n}{Number of grid points (default 200).}
 }

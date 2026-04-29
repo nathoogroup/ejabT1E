@@ -56,7 +56,7 @@ A result is flagged as a candidate Type I error when:
 
 ### C* Estimation
 
-C* is chosen to minimize the integrated squared deviation between the empirical contradiction rate and the theoretical T1E rate. Default grid: [1/3, 3] with 200 points.
+C* is chosen to minimize the integrated squared deviation between the empirical contradiction rate and the theoretical T1E rate. Default grid: [0, 3] with 200 points.
 
 ```r
 # Use default grid

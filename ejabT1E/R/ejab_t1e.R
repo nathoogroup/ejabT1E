@@ -99,14 +99,14 @@ objective_C <- function(C, p, ejab, up) {
 #' Grid search for C*
 #'
 #' Finds the value of C on a grid that minimizes the objective function.
-#' The default grid covers \code{[1/3, 3]} with 200 points. Pass
+#' The default grid covers \code{[0, 3]} with 200 points. Pass
 #' \code{grid_range = c(1, 1)} to fix C* = 1 (no search).
 #'
 #' @param p Numeric vector of p-values
 #' @param ejab Numeric vector of eJAB01 values
 #' @param up Upper bound (default 0.05)
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} specifying
-#'   the grid bounds (default \code{c(1/3, 3)}). If both values are equal,
+#'   the grid bounds (default \code{c(0, 3)}). If both values are equal,
 #'   C* is fixed at that value with no search.
 #' @param grid_n Number of grid points (default 200). Ignored when
 #'   \code{grid_range} specifies a single point.
@@ -127,7 +127,7 @@ objective_C <- function(C, p, ejab, up) {
 #' fit1 <- estimate_Cstar(p, e, up = 0.05, grid_range = c(1, 1))
 #' @export
 estimate_Cstar <- function(p, ejab, up = 0.05,
-                            grid_range = c(1/3, 3), grid_n = 200) {
+                            grid_range = c(0, 3), grid_n = 200) {
   if (grid_range[1] == grid_range[2]) {
     grid <- grid_range[1]
   } else {
@@ -336,7 +336,7 @@ diagnostic_qqplot <- function(U, alpha = NULL, Cstar = NULL,
 #' @param up Upper bound for the alpha grid (default 0.1)
 #' @param alpha Significance level for the diagnostic QQ-plot (default 0.05)
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
-#'   C search grid (default \code{c(0, 1)})
+#'   C search grid (default \code{c(0, 3)})
 #' @param grid_n Number of C grid points (default 200)
 #' @param n_alpha Number of alpha grid points (default 200)
 #' @param n Numeric vector of sample sizes (same length as \code{p}); needed
@@ -353,7 +353,7 @@ diagnostic_qqplot <- function(U, alpha = NULL, Cstar = NULL,
 #'   }
 #' @export
 calibration_plot <- function(p, ejab, up = 0.1, alpha = 0.05,
-                              grid_range = c(0, 1), grid_n = 200,
+                              grid_range = c(0, 3), grid_n = 200,
                               n_alpha = 200, n = NULL, q = NULL, ...) {
   # --- Build grids ---
   alpha_grid <- seq(0, up, length.out = n_alpha + 1)[-1]  # skip alpha=0
@@ -424,7 +424,7 @@ calibration_plot <- function(p, ejab, up = 0.1, alpha = 0.05,
 #' @param alpha Significance level for T1E detection (default 0.05).
 #'   Must satisfy alpha <= up.
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
-#'   C* grid (default \code{c(1/3, 3)}). Use \code{c(1, 1)} to fix C* = 1.
+#'   C* grid (default \code{c(0, 3)}). Use \code{c(1, 1)} to fix C* = 1.
 #' @param grid_n Number of grid points (default 200)
 #' @param plot Logical; produce calibration plot and diagnostic QQ-plot?
 #'   (default TRUE)
@@ -450,7 +450,7 @@ calibration_plot <- function(p, ejab, up = 0.1, alpha = 0.05,
 #' head(result$candidates)
 #' @export
 ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
-                          grid_range = c(1/3, 3), grid_n = 200,
+                          grid_range = c(0, 3), grid_n = 200,
                           plot = TRUE) {
   # Input validation
   if (!all(c("p", "n", "q") %in% names(df))) {
@@ -509,7 +509,7 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
 #' @param ejab Numeric vector of eJAB01 values (same length as \code{p})
 #' @param up Upper bound for the alpha grid (default 0.1)
 #' @param grid_range Length-2 numeric vector \code{c(lower, upper)} for the
-#'   C grid (default \code{c(0, 1)})
+#'   C grid (default \code{c(0, 3)})
 #' @param grid_n Number of C grid points (default 200)
 #' @param n_alpha Number of alpha grid points (default 200)
 #' @return A list with components:
@@ -520,7 +520,7 @@ ejab_pipeline <- function(df, up = 0.05, alpha = 0.05,
 #'   }
 #' @export
 estimate_Cstar_alpha <- function(p, ejab, up = 0.1,
-                                  grid_range = c(0, 1), grid_n = 200,
+                                  grid_range = c(0, 3), grid_n = 200,
                                   n_alpha = 200) {
   alpha_grid <- seq(0, up, length.out = n_alpha + 1)[-1]
   C_grid     <- seq(grid_range[1], grid_range[2], length.out = grid_n)
